@@ -48,7 +48,23 @@ const pancakeswapV2Router = [
 	'function swapTokensForExactTokens(uint256 amountOut, uint256 amountInMax, address[] path, address to, uint256 deadline) returns (uint256[] amounts)',
 ]
 
+const BEP20 = [
+	'event Approval(address indexed owner, address indexed spender, uint256 value)',
+	'event Transfer(address indexed from, address indexed to, uint256 value)',
+	'function allowance(address _owner, address spender) view returns (uint256)',
+	'function approve(address spender, uint256 amount) returns (bool)',
+	'function balanceOf(address account) view returns (uint256)',
+	'function decimals() view returns (uint256)',
+	'function getOwner() view returns (address)',
+	'function name() view returns (string)',
+	'function symbol() view returns (string)',
+	'function totalSupply() view returns (uint256)',
+	'function transfer(address recipient, uint256 amount) returns (bool)',
+	'function transferFrom(address sender, address recipient, uint256 amount) returns (bool)',
+]
+
 module.exports = {
 	pancakeswapV2Router,
 	pancakeswapV2Factory,
+	BEP20,
 }
