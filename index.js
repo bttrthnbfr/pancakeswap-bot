@@ -5,6 +5,7 @@ const contractAbi = require('./contract-abi')
 
 const provider = new ethers.providers.WebSocketProvider(configs.WSSProvider)
 // const provider = new ethers.providers.JsonRpcProvider(configs.RPCProvider)
+const wallet = new ethers.Wallet(configs.userWalletPrivateKey, provider)
 
 // TODO
 // buy process
@@ -49,27 +50,41 @@ const [
 	},
 ])
 
-const _buyToken = async (minAmountOutInValue) => {
-	const tx = contractPancakeswapV2Router.swapExactTokensForTokens(
-		ethers.utils.parseEther(configs.amountOfWBNB),
-		minAmountOutInValue,
-		[configs.WBNBContractAddress, configs.targetTokenAddress],
-		configs.userWalletAddress
-	)
+const _getTimeDeadline = async () => {
+	console.log(configs)
+	return Date.now() + configs.transactionDeadlineInSecond
+}
+
+const _buyToken = async (minAmountOutIn) => {
+	const tx = await contractPancakeswapV2Router
+		.connect(wallet)
+		.swapExactTokensForTokens(
+			ethers.utils.parseEther(configs.amountOfWBNB.toString()),
+			minAmountOutIn.toString(),
+			[configs.WBNBContractAddress, configs.targetTokenAddress],
+			configs.userWalletAddress,
+			_getTimeDeadline(),
+			{
+				gasLimit: configs.buyTokenGasLimit,
+				gasPrice: ethers.utils.parseUnits(configs.gasPriceInGWEI, 'gwei'),
+				nonce: null,
+			}
+		)
 	await tx.wait()
 	return tx
 }
 
-const _sellToken = async () => {
-	const tx = contractPancakeswapV2Router.swapExactTokensForTokens(
-		amountInInValue,
-		minAmountOutInValue,
-		[configs.targetTokenAddress, configs.WBNBContractAddress],
-		configs.userWalletAddress
-	)
-	await tx.wait()
-	return tx
-}
+// const _sellToken = async (minAmountOutIn) => {
+// 	contractPancakeswapV2Router.connect(wallet)
+// 	const tx = contractPancakeswapV2Router.swapExactTokensForTokens(
+// 		ethers.utils.parseEther(configs.amountOfWBNB.toString()),
+// 		ethers.utils.parseEther(minAmountOutIn.toString()),
+// 		[configs.targetTokenAddress, configs.WBNBContractAddress],
+// 		configs.userWalletAddress
+// 	)
+// 	await tx.wait()
+// 	return tx
+// }
 
 const _approveWBNB = async () => {
 	console.log('approve wbnb')
@@ -131,17 +146,20 @@ const buyOnLiquidityAdded = async (log) => {
 	console.log(priceImpact)
 
 	// skip when the balance of pool is less than minimum liquidity added
-	if (balanceOfPool.balanceOfWBNB < configs.minLiquidityWBNBAdded) {
-		return
-	}
+	// if (balanceOfPool.balanceOfWBNB < configs.minLiquidityWBNBAdded) {
+	// 	return
+	// }
 
 	// skip when the price impact is higher than the limit, the default limit is 1%
 	if (priceImpact > configs.priceImpactTolerancePercentage) {
+		console.log('price impact higher')
 		return
 	}
 
 	const mintAmountOut = _getMinAmountOut(amountOfTargetToken)
-	await _buyToken(mintAmountOut)
+	console.log(mintAmountOut)
+	const txBuy = await _buyToken(ethers.utils.parseEther(mintAmountOut.toString()))
+	console.log(txBuy)
 }
 
 const _detectLiquidity = async () => {

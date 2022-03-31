@@ -7,9 +7,11 @@ const configs = {
 	minLiquidityWBNBAdded: parseFloat(process.env.MIN_LIQUIDITY_WBNB_ADDED), // min liquidity of the target token
 	slipppagePercentage: parseFloat(process.env.SLIPPAGE_PERCENTAGE), // if the target token price has been reached the slippage, the bot will sell that token
 	priceImpactTolerancePercentage: parseFloat(process.env.PRICE_IMPACT_TOLERANCE_PERCENTAGE),
+	transactionDeadlineInSecond: parseInt(process.env.TRANSACTION_DEADLINE_IN_SECOND),
 
-	gasPrice: process.env.GAS_PRICE,
+	gasPriceInGWEI: process.env.GAS_PRICE_IN_GWEI,
 	buyTokenGasLimit: process.env.BUY_TOKEN_GAS_LIMIT, // default minimum transaction
+	sellTokenGasLimit: process.env.SELL_TOKEN_GAS_LIMIT, // default minimum transaction
 
 	BNBContractAddress: process.env.BNB_CONTRACT_ADDRESS,
 	WBNBContractAddress: process.env.WBNB_CONTRACT_ADDRESS,
