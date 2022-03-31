@@ -155,6 +155,7 @@ const _detectLiquidity = async () => {
 const main = async () => {
 	// _detectLiquidity()
 
+	//test
 	buyOnLiquidityAdded({
 		blockNumber: 18038846,
 		blockHash: '0x4407baacb15c34d6fe38a4a7a41a55e6008a5fff4ab9b5c5eef90774d27883b3',
