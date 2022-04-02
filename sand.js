@@ -1,10 +1,8 @@
 const ethers = require('ethers')
+const { confirmYesNo } = require('./utils')
 
-// console.log(ethers.utils.parseUnits('0.1'))
-// console.log(ethers.utils.parseEther('0.1'))
+const main = async () => {
+	await confirmYesNo('yes')
+}
 
-// const res = ethers.utils.parseUnits('1000').div(ethers.utils.parseUnits('10'))
-// console.log(res.toString())
-
-const res = ethers.utils.parseEther('1', 18)
-console.log(JSON.stringify(res))
+main()
