@@ -240,6 +240,28 @@ const _detectLiquidity = async () => {
 	provider.on(filter, buyOnLiquidityAdded)
 }
 
+const _isWBNBApproved = async () => {
+	const [allowance, balanceWBNBOfUser] = await Promise.all([
+		contractWBNBToken.allowance(configs.userWalletAddress, configs.pancakeSwapV2RouterAddress),
+		contractWBNBToken.balanceOf(configs.userWalletAddress),
+	])
+
+	if (allowance.lt(balanceWBNBOfUser)) {
+		return false
+	}
+
+	return true
+}
+
+const _approveWBNB = async () => {
+	const tx = await contractWBNBToken.connect(wallet).approve(
+		configs.pancakeSwapV2RouterAddress,
+		'115792089237316195423570985008687907853269984665640564039457584007913129639935' // max approve
+	)
+	await tx.wait()
+	return tx
+}
+
 const main = async () => {
 	log('Getting config & token information..\n', logType.ok)
 	let [
@@ -249,6 +271,7 @@ const main = async () => {
 		targetTokenSymbol,
 		targetTokenTotalSupply,
 		balanceWBNBOfUser,
+		isWBNBApproved,
 	] = await Promise.all([
 		contractWBNBToken.decimals(),
 		contractTargetToken.decimals(),
@@ -256,6 +279,7 @@ const main = async () => {
 		contractTargetToken.symbol(),
 		contractTargetToken.totalSupply(),
 		contractWBNBToken.balanceOf(configs.userWalletAddress),
+		_isWBNBApproved(),
 	])
 	targetTokenDecimal = _targetTokenDecimal
 	WBNBDecimal = _WBNBDecimal
@@ -314,6 +338,22 @@ const main = async () => {
 		log(`Validation error: balance of amount WBNB is less than user WBNB balance`, logType.danger)
 		log('exiting..\n', logType.ok)
 		process.exit(1)
+	}
+
+	if (isWBNBApproved) {
+		log('WBNB is no approved', logType.ok)
+		log('approving WBNB..', logType.ok)
+		let txApprove
+		try {
+			txApprove = await _approveWBNB()
+		} catch (error) {
+			// TODO proper handle error transaction
+			const txError = JSON.parse(JSON.stringify(error))
+			log(`Error TX approve WBNB: ${txError.transactionHash} | ${txError.reason}`, logType.danger)
+			log('exiting..\n', logType.ok)
+			return
+		}
+		log(`TX approve WBNB success: ${txApprove.hash}\n`, logType.ok)
 	}
 
 	await confirmYesNo('Continue?')
