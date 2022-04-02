@@ -1,0 +1,27 @@
+{
+  "name": "pancake-bot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "dependencies": {
+    "chalk": "^2.4.1",
+    "cli-spinners": "^2.6.1",
+    "dotenv": "^16.0.0",
+    "ethers": "^5.6.2",
+    "prompt-confirm": "^2.0.4"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bttrthnbfr/pancakeswap-bot.git"
+  },
+  "author": "bttrthnbfr, amin4udin",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bttrthnbfr/pancakeswap-bot/issues"
+  },
+  "homepage": "https://github.com/bttrthnbfr/pancakeswap-bot#readme"
+}

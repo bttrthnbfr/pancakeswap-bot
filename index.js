@@ -1,14 +1,19 @@
 require('dotenv').config()
+const { parseUnits } = require('@ethersproject/units')
 const ethers = require('ethers')
 const configs = require('./configs')
+const { logType } = require('./enums')
+const { log } = require('./utils')
 const contractAbi = require('./contract-abi')
 
 const provider = new ethers.providers.WebSocketProvider(configs.WSSProvider)
-// const provider = new ethers.providers.JsonRpcProvider(configs.RPCProvider)
 const wallet = new ethers.Wallet(configs.userWalletPrivateKey, provider)
 
+let targetTokenDecimal
+let WBNBDecimal
+
 // TODO
-// buy process
+// automiatic approve WBNB token first
 // sell process
 // - set target price
 // - set loss price
@@ -51,7 +56,6 @@ const [
 ])
 
 const _getTimeDeadline = async () => {
-	console.log(configs)
 	return Date.now() + configs.transactionDeadlineInSecond
 }
 
@@ -59,14 +63,14 @@ const _buyToken = async (minAmountOutIn) => {
 	const tx = await contractPancakeswapV2Router
 		.connect(wallet)
 		.swapExactTokensForTokens(
-			ethers.utils.parseEther(configs.amountOfWBNB.toString()),
-			minAmountOutIn.toString(),
+			configs.amountOfWBNB,
+			minAmountOutIn,
 			[configs.WBNBContractAddress, configs.targetTokenAddress],
 			configs.userWalletAddress,
 			_getTimeDeadline(),
 			{
 				gasLimit: configs.buyTokenGasLimit,
-				gasPrice: ethers.utils.parseUnits(configs.gasPriceInGWEI, 'gwei'),
+				gasPrice: configs.gasPrice,
 				nonce: null,
 			}
 		)
@@ -74,21 +78,27 @@ const _buyToken = async (minAmountOutIn) => {
 	return tx
 }
 
-// const _sellToken = async (minAmountOutIn) => {
+// const _sellToken = async (amountOfTargetToken, minAmountOutIn) => {
 // 	contractPancakeswapV2Router.connect(wallet)
 // 	const tx = contractPancakeswapV2Router.swapExactTokensForTokens(
-// 		ethers.utils.parseEther(configs.amountOfWBNB.toString()),
-// 		ethers.utils.parseEther(minAmountOutIn.toString()),
+// 		amountOfTargetToken,
+// 		minAmountOutIn,
 // 		[configs.targetTokenAddress, configs.WBNBContractAddress],
-// 		configs.userWalletAddress
+// 		configs.userWalletAddress,
+// 		_getTimeDeadline(),
+// 		{
+// 			gasLimit: configs.sellTokenGasLimit,
+// 			gasPrice: configs.gasPrice,
+// 			nonce: null,
+// 		}
 // 	)
 // 	await tx.wait()
 // 	return tx
 // }
 
-const _approveWBNB = async () => {
-	console.log('approve wbnb')
-}
+// const _approveWBNB = async () => {
+// 	console.log('approve wbnb')
+// }
 
 const _getBalanceOfPool = async (pair) => {
 	const [balanceOfWBNB, balanceOfTargetToken] = await Promise.all([
@@ -96,70 +106,120 @@ const _getBalanceOfPool = async (pair) => {
 		contractTargetToken.balanceOf(pair),
 	])
 	return {
-		balanceOfWBNB: parseFloat(ethers.utils.formatEther(balanceOfWBNB)),
-		balanceOfTargetToken: parseFloat(ethers.utils.formatEther(balanceOfTargetToken)),
+		balanceOfWBNB: balanceOfWBNB,
+		balanceOfTargetToken: balanceOfTargetToken,
 	}
 }
 
-const _getPairFromLog = (log) => {
+const _getPairFromEvent = (event) => {
 	const iface = new ethers.utils.Interface(contractAbi.pancakeswapV2Factory)
-	const result = iface.parseLog(log)
+	const result = iface.parseLog(event)
 	return result.args.pair
 }
 
 const _getAmountOutTargetToken = async () => {
-	const amountsOutResult = await contractPancakeswapV2Router.getAmountsOut(
-		ethers.utils.parseUnits(configs.amountOfWBNB.toString()),
-		[configs.WBNBContractAddress, configs.targetTokenAddress]
-	)
+	const amountsOutResult = await contractPancakeswapV2Router.getAmountsOut(configs.amountOfWBNB, [
+		configs.WBNBContractAddress,
+		configs.targetTokenAddress,
+	])
 	let amountOfTargetToken = amountsOutResult[1]
-	amountOfTargetToken = ethers.utils.formatEther(amountOfTargetToken)
-	amountOfTargetToken = parseFloat(amountOfTargetToken)
-
 	return amountOfTargetToken
 }
 
-const _getPriceImpact = (balanceOfPool, amountOfTargetToken) => {
-	const marketPriceTargetTokenPerWBNB =
-		balanceOfPool.balanceOfTargetToken / balanceOfPool.balanceOfWBNB
-	const amountOfMarketPriceTargetToken = configs.amountOfWBNB * marketPriceTargetTokenPerWBNB
+const _getPriceImpactInPercentage = (balanceOfPool, amountOfTargetToken) => {
+	const marketPriceTargetTokenPerWBNB = balanceOfPool.balanceOfTargetToken.div(
+		balanceOfPool.balanceOfWBNB
+	)
 
-	// this price impact is calculate from first added liquidity
-	const priceImpact = 100 - (amountOfTargetToken / amountOfMarketPriceTargetToken) * 100
+	const amountOfMarketPriceTargetToken = configs.amountOfWBNB.mul(marketPriceTargetTokenPerWBNB)
+	const priceImpact =
+		100 -
+		(parseFloat(amountOfTargetToken.toString()) / parseFloat(amountOfMarketPriceTargetToken)) * 100
 
 	return priceImpact
 }
 
 const _getMinAmountOut = (amount) => {
-	return amount - (amount / 100) * configs.slipppagePercentage
+	return amount.sub(amount.div('100').mul(configs.slipppagePercentage))
 }
 
-const buyOnLiquidityAdded = async (log) => {
-	const pair = _getPairFromLog(log)
+const buyOnLiquidityAdded = async (event) => {
+	const pair = _getPairFromEvent(event)
+
+	log('Liquidity is snipped\n', logType.ok)
+	log('Getting balance of liquidity added..\n', logType.ok)
 	const [balanceOfPool, amountOfTargetToken] = await Promise.all([
 		_getBalanceOfPool(pair),
 		_getAmountOutTargetToken(),
 	])
-	const priceImpact = _getPriceImpact(balanceOfPool, amountOfTargetToken)
-
-	console.log(amountOfTargetToken)
-	console.log(priceImpact)
+	log(
+		`Balance of target token: ${
+			balanceOfPool.balanceOfTargetToken
+		} (Unit) | ${ethers.utils.formatUnits(
+			balanceOfPool.balanceOfTargetToken,
+			targetTokenDecimal
+		)} (Decimal)`,
+		logType.ok
+	)
+	log(
+		`Balance of WBNB: ${balanceOfPool.balanceOfWBNB} (Unit) | ${ethers.utils.formatUnits(
+			balanceOfPool.balanceOfWBNB,
+			WBNBDecimal
+		)} (Decimal)`,
+		logType.ok
+	)
 
 	// skip when the balance of pool is less than minimum liquidity added
-	// if (balanceOfPool.balanceOfWBNB < configs.minLiquidityWBNBAdded) {
-	// 	return
-	// }
+	if (balanceOfPool.balanceOfWBNB.lt(configs.minLiquidityWBNBAdded)) {
+		log(
+			`Validation error: balance of WBNB is less than min liquidity WBNB added (${balanceOfPool.balanceOfWBNB} < ${configs.minLiquidityWBNBAdded})`,
+			logType.danger
+		)
+		log('skipping..\n', logType.ok)
+		return
+	}
 
-	// skip when the price impact is higher than the limit, the default limit is 1%
-	if (priceImpact > configs.priceImpactTolerancePercentage) {
-		console.log('price impact higher')
+	// skip when the price impact is higher than the limit
+	const priceImpactInPercentage = _getPriceImpactInPercentage(balanceOfPool, amountOfTargetToken)
+	log(`Price impact: ${priceImpactInPercentage.toFixed(2)}%\n`, logType.ok)
+	if (priceImpactInPercentage > configs.priceImpactToleranceInPercentage) {
+		log(
+			`Validation error: price impact is higher than the limit (${priceImpactInPercentage}% > ${configs.priceImpactToleranceInPercentage}%)`,
+			logType.danger
+		)
+		log('skipping..\n', logType.ok)
 		return
 	}
 
 	const mintAmountOut = _getMinAmountOut(amountOfTargetToken)
-	console.log(mintAmountOut)
-	const txBuy = await _buyToken(ethers.utils.parseEther(mintAmountOut.toString()))
-	console.log(txBuy)
+
+	log('Process buy token..\n', logType.ok)
+	log(
+		`Amount in: ${configs.amountOfWBNB} (Unit) | ${ethers.utils.formatUnits(
+			configs.amountOfWBNB,
+			WBNBDecimal
+		)} (Decimal)`,
+		logType.ok
+	)
+	log(
+		`Min amount out: ${mintAmountOut} (Unit) | ${ethers.utils.formatUnits(
+			mintAmountOut,
+			targetTokenDecimal
+		)} (Decimal)\n`,
+		logType.ok
+	)
+
+	let txBuy
+	try {
+		txBuy = await _buyToken(mintAmountOut)
+	} catch (error) {
+		// TODO proper handle error transaction
+		const txError = JSON.parse(JSON.stringify(error))
+		log(`Error TX buy token: ${txError.transactionHash} | ${txError.reason}`, logType.danger)
+		log('skipping..\n', logType.ok)
+		return
+	}
+	log(`TX buy success: ${txBuy.hash}\n`, logType.ok)
 }
 
 const _detectLiquidity = async () => {
@@ -171,24 +231,50 @@ const _detectLiquidity = async () => {
 }
 
 const main = async () => {
-	// _detectLiquidity()
+	log('Getting config & token information..\n', logType.ok)
+	let [_targetTokenDecimal, _WBNBDecimal] = await Promise.all([
+		contractTargetToken.decimals(),
+		contractWBNBToken.decimals(),
+	])
+	targetTokenDecimal = _targetTokenDecimal
+	WBNBDecimal = _WBNBDecimal
 
-	//test
-	buyOnLiquidityAdded({
-		blockNumber: 18038846,
-		blockHash: '0x4407baacb15c34d6fe38a4a7a41a55e6008a5fff4ab9b5c5eef90774d27883b3',
-		transactionIndex: 1,
-		removed: false,
-		address: '0xB7926C0430Afb07AA7DEfDE6DA862aE0Bde767bc',
-		data: '0x000000000000000000000000f3dc9cde2febf8df300ec1256def3fb03eb22507000000000000000000000000000000000000000000000000000000000002612b',
-		topics: [
-			'0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9',
-			'0x0000000000000000000000006fdbf666474d41a7f93ff634eb74b059cac5411b',
-			'0x000000000000000000000000ae13d989dac2f0debff460ac112a837c89baa7cd',
-		],
-		transactionHash: '0x2d6c89356ecbd3454ae4c2da0c5057fb428ff5e7860986667854517ef2e3bf46',
-		logIndex: 3,
-	})
+	log(`User wallet address: ${configs.userWalletAddress}`, logType.ok)
+	log(`Target token address: ${configs.targetTokenAddress}`, logType.ok)
+	log(
+		`Amount of WBNB: ${configs.amountOfWBNB} (Unit) | ${ethers.utils.formatUnits(
+			configs.amountOfWBNB
+		)} (decimal)`,
+		logType.ok
+	)
+	log(
+		`Min liqudity added: ${configs.minLiquidityWBNBAdded} (Unit) | ${ethers.utils.formatUnits(
+			configs.minLiquidityWBNBAdded
+		)} (decimal)`,
+		logType.ok
+	)
+	log(`Price impact tolerance: ${configs.priceImpactToleranceInPercentage}%`, logType.ok)
+	log(`Transaction deadline: ${configs.transactionDeadlineInSecond}s`, logType.ok)
+	log(
+		`Gas price: ${configs.gasPrice} (Unit) | ${ethers.utils.formatUnits(
+			configs.gasPrice,
+			'gwei'
+		)} (GWEI)`,
+		logType.ok
+	)
+	log(`Buy token gas limit: ${configs.buyTokenGasLimit}`, logType.ok)
+	log(`Sell token gas limit: ${configs.sellTokenGasLimit}`, logType.ok)
+	log(`WBNB contract address: ${configs.WBNBContractAddress}`, logType.ok)
+	log(`Pancakeswap V2 factory address: ${configs.pancakeSwapV2FactoryAddress}`, logType.ok)
+	log(`Pancakeswap V2 router address: ${configs.pancakeSwapV2RouterAddress}`, logType.ok)
+	log(`WSS provider: ${configs.WSSProvider}`, logType.ok)
+	log(`Target token decimal: ${targetTokenDecimal}`, logType.ok)
+	log(`WBNB token decimal: ${targetTokenDecimal}\n`, logType.ok)
+
+	// TODO await confirmYesNo('Continue?')
+
+	log(`Detecting target token liquidity..\n`, logType.ok)
+	_detectLiquidity()
 }
 
 main()
