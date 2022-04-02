@@ -12,6 +12,8 @@ const configs = {
 	priceImpactToleranceInPercentage: parseFloat(process.env.PRICE_IMPACT_TOLERANCE_IN_PERCENTAGE),
 	transactionDeadlineInSecond: parseInt(process.env.TRANSACTION_DEADLINE_IN_SECOND),
 	sleepBeforeBuyInMiliSecond: parseInt(process.env.SLEEP_BEFORE_BUY_IN_MILI_SECOND),
+	maxBuyTax: parseInt(process.env.MAX_BUY_TAX),
+	maxSellTax: parseInt(process.env.MAX_SELL_TAX),
 
 	gasPrice: ethers.utils.parseUnits(process.env.GAS_PRICE_IN_GWEI, 'gwei'),
 	buyTokenGasLimit: process.env.BUY_TOKEN_GAS_LIMIT, // default minimum transaction

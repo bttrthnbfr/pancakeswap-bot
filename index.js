@@ -5,7 +5,7 @@ const configs = require('./configs')
 const { logType } = require('./enums')
 const { log, confirmYesNo, sleep } = require('./utils')
 const contractAbi = require('./contract-abi')
-const { getTokenInformation } = require('./repo')
+const { getTokenInformation, honeypotChecker, getHoneypotChecker } = require('./repo')
 
 const provider = new ethers.providers.WebSocketProvider(configs.WSSProvider)
 const wallet = new ethers.Wallet(configs.userWalletPrivateKey, provider)
@@ -17,9 +17,7 @@ let WBNBDecimal
 // sell process
 // - set target price
 // - set loss price
-// token information
-// - honeypot checker before add new token
-// - tax checker before add token
+// - calculate sell with tax
 // alert
 // - when the price is lower send to telegram
 
@@ -263,11 +261,28 @@ const _approveWBNB = async () => {
 }
 
 const _getTokenInformation = async () => {
-	const tokenInformation = await getTokenInformation(configs.targetTokenAddress)
-	if (tokenInformation.ABI === 'Contract source code not verified') {
+	let tokenInformation
+	try {
+		tokenInformation = await getTokenInformation(configs.targetTokenAddress)
+		if (tokenInformation.ABI === 'Contract source code not verified') {
+			return false
+		}
+	} catch (_) {
+		// TODO catch error
 		return false
 	}
 	return tokenInformation
+}
+
+const _getHoneypotChecker = async () => {
+	let honeypotChecker
+	try {
+		honeypotChecker = await getHoneypotChecker('0xf88EB4E7CD2Be646C496e0a10ED364d0E5e5a65e')
+	} catch (e) {
+		// TODO catch error
+		return false
+	}
+	return honeypotChecker
 }
 
 const main = async () => {
@@ -281,6 +296,7 @@ const main = async () => {
 		balanceWBNBOfUser,
 		isWBNBApproved,
 		tokenInformation,
+		honeypotChecker,
 	] = await Promise.all([
 		contractWBNBToken.decimals(),
 		contractTargetToken.decimals(),
@@ -290,6 +306,7 @@ const main = async () => {
 		contractWBNBToken.balanceOf(configs.userWalletAddress),
 		_isWBNBApproved(),
 		_getTokenInformation(),
+		_getHoneypotChecker(),
 	])
 	targetTokenDecimal = _targetTokenDecimal
 	WBNBDecimal = _WBNBDecimal
@@ -348,15 +365,35 @@ const main = async () => {
 		log(`Is contract verified: TRUE`, logType.ok)
 		log(`Contract name: ${tokenInformation.ContractName}`, logType.ok)
 		log(`Compiler version: ${tokenInformation.CompilerVersion}`, logType.ok)
-		log(`Runs: ${tokenInformation.Runs}`, logType.ok)
+		log(`Runs: ${tokenInformation.Runs}\n`, logType.ok)
 	} else {
-		log(`Is contract verified: FALSE`, logType.ok)
+		log(`Is contract verified: FALSE\n`, logType.danger)
 	}
 
 	if (balanceWBNBOfUser.lt(configs.amountOfWBNB)) {
 		log(`Validation error: balance of amount WBNB is less than user WBNB balance`, logType.danger)
 		log('exiting..\n', logType.ok)
 		process.exit(1)
+	}
+
+	if (honeypotChecker) {
+		log(`Honeypot checker..`, logType.ok)
+		log(
+			`No liquidity: ${honeypotChecker.NoLiquidity}`,
+			honeypotChecker.NoLiquidity ? logType.ok : logType.danger
+		)
+		log(
+			`Is honeypot: ${honeypotChecker.IsHoneypot}`,
+			honeypotChecker.IsHoneypot ? logType.danger : logType.ok
+		)
+		log(
+			`Buy tax: ${honeypotChecker.BuyTax}%`,
+			honeypotChecker.BuyTax > configs.maxBuyTax ? logType.danger : logType.ok
+		)
+		log(
+			`Sell tax: ${honeypotChecker.SellTax}%\n`,
+			honeypotChecker.SellTax > configs.maxSellTax ? logType.danger : logType.ok
+		)
 	}
 
 	if (!isWBNBApproved) {

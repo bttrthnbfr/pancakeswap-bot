@@ -20,6 +20,27 @@ const getTokenInformation = (contractAddress) => {
 	})
 }
 
+const getHoneypotChecker = async (contractAddress) => {
+	const config = {
+		method: 'get',
+		url: `https://aywt3wreda.execute-api.eu-west-1.amazonaws.com/default/IsHoneypot?chain=bsc2&token=${contractAddress}`,
+		headers: {},
+	}
+
+	return new Promise((resolve, reject) => {
+		axios(config)
+			.then(function (response) {
+				const data = response.data
+				resolve(data)
+			})
+			.catch(function (error) {
+				console.log(error)
+				reject(error)
+			})
+	})
+}
+
 module.exports = {
 	getTokenInformation,
+	getHoneypotChecker,
 }
