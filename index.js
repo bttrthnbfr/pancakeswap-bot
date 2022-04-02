@@ -340,7 +340,7 @@ const main = async () => {
 		process.exit(1)
 	}
 
-	if (isWBNBApproved) {
+	if (!isWBNBApproved) {
 		log('WBNB is no approved', logType.ok)
 		log('approving WBNB..', logType.ok)
 		let txApprove
