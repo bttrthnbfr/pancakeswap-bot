@@ -302,7 +302,13 @@ const main = async () => {
 	log(`Target token name: ${targetTokenName}`, logType.ok)
 	log(`Target token symbol: ${targetTokenSymbol}`, logType.ok)
 	log(`Target token decimal: ${targetTokenDecimal}`, logType.ok)
-	log(`Target token total supply: ${targetTokenTotalSupply}\n`, logType.ok)
+	log(
+		`Target token total supply: ${targetTokenTotalSupply} (unit) | ${ethers.utils.formatUnits(
+			targetTokenTotalSupply,
+			targetTokenDecimal
+		)} (decimal)\n`,
+		logType.ok
+	)
 
 	if (balanceWBNBOfUser.lt(configs.amountOfWBNB)) {
 		log(`Validation error: balance of amount WBNB is less than user WBNB balance`, logType.danger)
