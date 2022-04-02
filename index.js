@@ -5,6 +5,7 @@ const configs = require('./configs')
 const { logType } = require('./enums')
 const { log, confirmYesNo, sleep } = require('./utils')
 const contractAbi = require('./contract-abi')
+const { getTokenInformation } = require('./repo')
 
 const provider = new ethers.providers.WebSocketProvider(configs.WSSProvider)
 const wallet = new ethers.Wallet(configs.userWalletPrivateKey, provider)
@@ -13,7 +14,6 @@ let targetTokenDecimal
 let WBNBDecimal
 
 // TODO
-// automiatic approve WBNB token first
 // sell process
 // - set target price
 // - set loss price
@@ -262,6 +262,14 @@ const _approveWBNB = async () => {
 	return tx
 }
 
+const _getTokenInformation = async () => {
+	const tokenInformation = await getTokenInformation(configs.targetTokenAddress)
+	if (tokenInformation.ABI === 'Contract source code not verified') {
+		return false
+	}
+	return tokenInformation
+}
+
 const main = async () => {
 	log('Getting config & token information..\n', logType.ok)
 	let [
@@ -272,6 +280,7 @@ const main = async () => {
 		targetTokenTotalSupply,
 		balanceWBNBOfUser,
 		isWBNBApproved,
+		tokenInformation,
 	] = await Promise.all([
 		contractWBNBToken.decimals(),
 		contractTargetToken.decimals(),
@@ -280,6 +289,7 @@ const main = async () => {
 		contractTargetToken.totalSupply(),
 		contractWBNBToken.balanceOf(configs.userWalletAddress),
 		_isWBNBApproved(),
+		_getTokenInformation(),
 	])
 	targetTokenDecimal = _targetTokenDecimal
 	WBNBDecimal = _WBNBDecimal
@@ -333,6 +343,15 @@ const main = async () => {
 		)} (decimal)\n`,
 		logType.ok
 	)
+
+	if (tokenInformation) {
+		log(`Is contract verified: TRUE`, logType.ok)
+		log(`Contract name: ${tokenInformation.ContractName}`, logType.ok)
+		log(`Compiler version: ${tokenInformation.CompilerVersion}`, logType.ok)
+		log(`Runs: ${tokenInformation.Runs}`, logType.ok)
+	} else {
+		log(`Is contract verified: FALSE`, logType.ok)
+	}
 
 	if (balanceWBNBOfUser.lt(configs.amountOfWBNB)) {
 		log(`Validation error: balance of amount WBNB is less than user WBNB balance`, logType.danger)

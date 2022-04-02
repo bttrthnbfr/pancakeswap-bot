@@ -23,6 +23,8 @@ const configs = {
 	pancakeSwapV2RouterAddress: process.env.PANCAKE_SWAP_V2_ROUTER_ADDRESS,
 
 	WSSProvider: process.env.WSS_PROVIDER,
+
+	BSCApiKey: process.env.BSC_API_KEY,
 }
 
 module.exports = configs
