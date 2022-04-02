@@ -277,7 +277,7 @@ const _getTokenInformation = async () => {
 const _getHoneypotChecker = async () => {
 	let honeypotChecker
 	try {
-		honeypotChecker = await getHoneypotChecker('0xf88EB4E7CD2Be646C496e0a10ED364d0E5e5a65e')
+		honeypotChecker = await getHoneypotChecker(configs.targetTokenAddress)
 	} catch (e) {
 		// TODO catch error
 		return false
