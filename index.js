@@ -5,7 +5,7 @@ const configs = require('./configs')
 const { logType } = require('./enums')
 const { log, confirmYesNo, sleep } = require('./utils')
 const contractAbi = require('./contract-abi')
-const { getTokenInformation, honeypotChecker, getHoneypotChecker } = require('./repo')
+const { getTokenInformation, getHoneypotChecker } = require('./repo')
 
 const provider = new ethers.providers.WebSocketProvider(configs.WSSProvider)
 const wallet = new ethers.Wallet(configs.userWalletPrivateKey, provider)
@@ -13,13 +13,17 @@ const wallet = new ethers.Wallet(configs.userWalletPrivateKey, provider)
 let targetTokenDecimal
 let WBNBDecimal
 
+let isTheTargetTokenAlreadyBought = false
+let userBalanceOfTargetTokenAfterBought
+let userAmountOfWBNBAfterBought // this will used to calculate price changed
+
 // TODO
+// useing big integer to some calculation
 // sell process
-// - set target price
-// - set loss price
 // - calculate sell with tax
 // alert
 // - when the price is lower send to telegram
+// refactor
 
 const _contractFactory = (dataContracts) => {
 	const results = []
@@ -76,27 +80,24 @@ const _buyToken = async (minAmountOutIn) => {
 	return tx
 }
 
-// const _sellToken = async (amountOfTargetToken, minAmountOutIn) => {
-// 	contractPancakeswapV2Router.connect(wallet)
-// 	const tx = contractPancakeswapV2Router.swapExactTokensForTokens(
-// 		amountOfTargetToken,
-// 		minAmountOutIn,
-// 		[configs.targetTokenAddress, configs.WBNBContractAddress],
-// 		configs.userWalletAddress,
-// 		_getTimeDeadline(),
-// 		{
-// 			gasLimit: configs.sellTokenGasLimit,
-// 			gasPrice: configs.gasPrice,
-// 			nonce: null,
-// 		}
-// 	)
-// 	await tx.wait()
-// 	return tx
-// }
-
-// const _approveWBNB = async () => {
-// 	console.log('approve wbnb')
-// }
+const _sellToken = async (amountOfTargetToken, minAmountOutIn) => {
+	const tx = await contractPancakeswapV2Router
+		.connect(wallet)
+		.swapExactTokensForTokens(
+			amountOfTargetToken,
+			minAmountOutIn,
+			[configs.targetTokenAddress, configs.WBNBContractAddress],
+			configs.userWalletAddress,
+			_getTimeDeadline(),
+			{
+				gasLimit: configs.sellTokenGasLimit,
+				gasPrice: configs.gasPrice,
+				nonce: null,
+			}
+		)
+	await tx.wait()
+	return tx
+}
 
 const _getBalanceOfPool = async (pair) => {
 	const [balanceOfWBNB, balanceOfTargetToken] = await Promise.all([
@@ -124,6 +125,15 @@ const _getAmountOutTargetToken = async () => {
 	return amountOfTargetToken
 }
 
+const _getAmountOutWBNB = async () => {
+	const amountsOutResult = await contractPancakeswapV2Router.getAmountsOut(
+		userBalanceOfTargetTokenAfterBought,
+		[configs.targetTokenAddress, configs.WBNBContractAddress]
+	)
+	let amountOfTargetToken = amountsOutResult[1]
+	return amountOfTargetToken
+}
+
 const _getPriceImpactInPercentage = (balanceOfPool, amountOfTargetToken) => {
 	const marketPriceTargetTokenPerWBNB = balanceOfPool.balanceOfTargetToken.div(
 		balanceOfPool.balanceOfWBNB
@@ -141,7 +151,142 @@ const _getMinAmountOut = (amount) => {
 	return amount.sub(amount.div('100').mul(configs.slipppagePercentage))
 }
 
-const buyOnLiquidityAdded = async (event) => {
+const _isWBNBApproved = async () => {
+	const [allowance, balanceWBNBOfUser] = await Promise.all([
+		contractWBNBToken.allowance(configs.userWalletAddress, configs.pancakeSwapV2RouterAddress),
+		contractWBNBToken.balanceOf(configs.userWalletAddress),
+	])
+
+	if (allowance.lt(balanceWBNBOfUser)) {
+		return false
+	}
+
+	return true
+}
+const _isTargetTokenApproved = async () => {
+	const [allowance, balanceTargetTokenOfUser] = await Promise.all([
+		contractTargetToken.allowance(configs.userWalletAddress, configs.targetTokenAddress),
+		contractTargetToken.balanceOf(configs.userWalletAddress),
+	])
+
+	if (allowance.lt(balanceTargetTokenOfUser)) {
+		return false
+	}
+
+	return true
+}
+
+const _approveWBNB = async () => {
+	const tx = await contractWBNBToken.connect(wallet).approve(
+		configs.pancakeSwapV2RouterAddress,
+		'115792089237316195423570985008687907853269984665640564039457584007913129639935' // max approve
+	)
+	await tx.wait()
+	return tx
+}
+const _approveTargetToken = async () => {
+	const tx = await contractTargetToken.connect(wallet).approve(
+		configs.pancakeSwapV2RouterAddress,
+		'115792089237316195423570985008687907853269984665640564039457584007913129639935' // max approve
+	)
+	await tx.wait()
+	return tx
+}
+
+const _getTokenInformation = async () => {
+	let tokenInformation
+	try {
+		tokenInformation = await getTokenInformation(configs.targetTokenAddress)
+		if (tokenInformation.ABI === 'Contract source code not verified') {
+			return false
+		}
+	} catch (_) {
+		// TODO catch error
+		return false
+	}
+	return tokenInformation
+}
+
+const _getHoneypotChecker = async () => {
+	let honeypotChecker
+	try {
+		honeypotChecker = await getHoneypotChecker(configs.targetTokenAddress)
+	} catch (e) {
+		// TODO catch error
+		return false
+	}
+	return honeypotChecker
+}
+
+const _getPriceDifferenceInPercentage = async () => {
+	const percetage =
+		100 -
+		(100 / parseFloat(configs.amountOfWBNB.toString())) *
+			parseFloat(userAmountOfWBNBAfterBought.toString())
+	return percetage
+}
+
+const _detectPriceTargetToken = async () => {
+	while (true) {
+		await sleep(1000)
+		if (!isTheTargetTokenAlreadyBought) {
+			continue
+		}
+
+		// set initial target token price
+		if (!userBalanceOfTargetTokenAfterBought && !userAmountOfWBNBAfterBought) {
+			const balanceOfTargetToken = await contractTargetToken.balanceOf(configs.userWalletAddress)
+			userBalanceOfTargetTokenAfterBought = balanceOfTargetToken
+			userAmountOfWBNBAfterBought = await _getAmountOutWBNB()
+		}
+
+		const priceDifferencePercentage = await _getPriceDifferenceInPercentage()
+		const mintAmountOut = _getMinAmountOut(userAmountOfWBNBAfterBought)
+
+		log(`Price differece percentage: ${priceDifferencePercentage}%`, logType.ok)
+
+		// take profit or cut loss
+		if (
+			priceDifferencePercentage >= configs.sellTargetInPercentage ||
+			priceDifferencePercentage <= configs.sellCutLossInPercentage
+		) {
+			let txSell
+			try {
+				txSell = await _sellToken(userBalanceOfTargetTokenAfterBought, mintAmountOut)
+			} catch (error) {
+				console.log(error)
+				// TODO proper handle error transaction
+				const txError = JSON.parse(JSON.stringify(error))
+				log(`Error TX sell token: ${txError.transactionHash} | ${txError.reason}`, logType.danger)
+				log('exiting..\n', logType.ok)
+				return
+			}
+			log(`TX sell success: ${txSell.hash}\n`, logType.ok)
+			log(
+				`Amount of WBNB: ${configs.amountOfWBNB} (Unit) | ${ethers.utils.formatUnits(
+					configs.amountOfWBNB,
+					WBNBDecimal
+				)} (decimal)`,
+				logType.ok
+			)
+
+			log(
+				`Estimate min amount of WBNB after sell (not included tax): ${mintAmountOut} (Unit) | ${ethers.utils.formatUnits(
+					mintAmountOut,
+					WBNBDecimal
+				)} (decimal)`,
+				logType.ok
+			)
+			return
+		}
+	}
+}
+
+const autoSell = async () => {
+	_detectPriceTargetToken()
+}
+
+const _buyOnLiquidityAdded = async (event) => {
 	const pair = _getPairFromEvent(event)
 
 	log('Liquidity is detected\n', logType.ok)
@@ -228,64 +373,18 @@ const buyOnLiquidityAdded = async (event) => {
 		return
 	}
 	log(`TX buy success: ${txBuy.hash}\n`, logType.ok)
+	isTheTargetTokenAlreadyBought = true
 }
 
-const _detectLiquidity = async () => {
+const detectLiquidity = async () => {
 	const filter = contractPancakeswapV2Factory.filters.PairCreated(
 		[configs.WBNBContractAddress, configs.targetTokenAddress],
 		[configs.WBNBContractAddress, configs.targetTokenAddress]
 	)
-	provider.on(filter, buyOnLiquidityAdded)
+	provider.on(filter, _buyOnLiquidityAdded)
 }
 
-const _isWBNBApproved = async () => {
-	const [allowance, balanceWBNBOfUser] = await Promise.all([
-		contractWBNBToken.allowance(configs.userWalletAddress, configs.pancakeSwapV2RouterAddress),
-		contractWBNBToken.balanceOf(configs.userWalletAddress),
-	])
-
-	if (allowance.lt(balanceWBNBOfUser)) {
-		return false
-	}
-
-	return true
-}
-
-const _approveWBNB = async () => {
-	const tx = await contractWBNBToken.connect(wallet).approve(
-		configs.pancakeSwapV2RouterAddress,
-		'115792089237316195423570985008687907853269984665640564039457584007913129639935' // max approve
-	)
-	await tx.wait()
-	return tx
-}
-
-const _getTokenInformation = async () => {
-	let tokenInformation
-	try {
-		tokenInformation = await getTokenInformation(configs.targetTokenAddress)
-		if (tokenInformation.ABI === 'Contract source code not verified') {
-			return false
-		}
-	} catch (_) {
-		// TODO catch error
-		return false
-	}
-	return tokenInformation
-}
-
-const _getHoneypotChecker = async () => {
-	let honeypotChecker
-	try {
-		honeypotChecker = await getHoneypotChecker(configs.targetTokenAddress)
-	} catch (e) {
-		// TODO catch error
-		return false
-	}
-	return honeypotChecker
-}
-
-const main = async () => {
+const startUp = async () => {
 	log('Getting config & token information..\n', logType.ok)
 	let [
 		_WBNBDecimal,
@@ -295,6 +394,7 @@ const main = async () => {
 		targetTokenTotalSupply,
 		balanceWBNBOfUser,
 		isWBNBApproved,
+		isTargetTokenApproved,
 		tokenInformation,
 		honeypotChecker,
 	] = await Promise.all([
@@ -305,6 +405,7 @@ const main = async () => {
 		contractTargetToken.totalSupply(),
 		contractWBNBToken.balanceOf(configs.userWalletAddress),
 		_isWBNBApproved(),
+		_isTargetTokenApproved(),
 		_getTokenInformation(),
 		_getHoneypotChecker(),
 	])
@@ -411,11 +512,32 @@ const main = async () => {
 		}
 		log(`TX approve WBNB success: ${txApprove.hash}\n`, logType.ok)
 	}
+	if (!isTargetTokenApproved) {
+		log('Target token is no approved', logType.ok)
+		log('approving target token..', logType.ok)
+		let txApprove
+		try {
+			txApprove = await _approveTargetToken()
+		} catch (error) {
+			// TODO proper handle error transaction
+			const txError = JSON.parse(JSON.stringify(error))
+			log(`Error TX approve WBNB: ${txError.transactionHash} | ${txError.reason}`, logType.danger)
+			log('exiting..\n', logType.ok)
+			return
+		}
+		log(`TX approve target token success: ${txApprove.hash}\n`, logType.ok)
+	}
+}
 
-	await confirmYesNo('Continue?')
+const main = async () => {
+	await startUp()
+	await confirmYesNo('Continue process the target?')
+
+	log(`Auto sell is ON`, logType.ok)
+	autoSell()
 
 	log(`Detecting target token liquidity..`, logType.ok)
-	_detectLiquidity()
+	detectLiquidity()
 }
 
 main()
