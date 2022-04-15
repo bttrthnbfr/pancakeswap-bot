@@ -85,6 +85,9 @@ class PancakeBot {
 							},
 						],
 					},
+					{
+						'contractCall.params.token': configs.targetTokenAddress,
+					},
 				],
 				watchAddress: true,
 			},
@@ -130,16 +133,18 @@ class PancakeBot {
 	}
 
 	_detectLiquidity(onLiquidityConfirmed) {
+		log('Detecting liquidity..', logType.ok)
 		this.blocknativeWs.send(this._initConnectionMsg())
 		this.blocknativeWs.send(this._subscribeTxMsg())
 		this.blocknativeWs.on('message', (msg) => {
 			const parseMsg = this._parseMsg(msg)
 			if (parseMsg) {
-				if (parseMsg.event.transaction === transactionStatus.pending) {
+				if (parseMsg.event.transaction.status === transactionStatus.pending) {
 					log('Detected transaction still pending..', logType.ok)
+				} else {
+					log('Detected transaction confirmed..', logType.ok)
+					onLiquidityConfirmed(parseMsg)
 				}
-				log('Detected transaction confirmed..', logType.ok)
-				onLiquidityConfirmed(parseMsg)
 			}
 		})
 	}
