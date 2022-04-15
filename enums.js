@@ -3,6 +3,12 @@ const logType = Object.freeze({
 	danger: 'danger',
 })
 
+const transactionStatus = Object.freeze({
+	pending: 'pending',
+	confirmed: 'confirmed',
+})
+
 module.exports = {
 	logType,
+	transactionStatus,
 }

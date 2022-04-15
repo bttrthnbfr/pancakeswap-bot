@@ -27,8 +27,10 @@ const configs = {
 	pancakeSwapV2RouterAddress: process.env.PANCAKE_SWAP_V2_ROUTER_ADDRESS,
 
 	WSSProvider: process.env.WSS_PROVIDER,
+	WSSBlocknative: process.env.WSS_BLOCKNATIVE,
 
 	BSCApiKey: process.env.BSC_API_KEY,
+	BlocknativeDAPPID: process.env.BLOCKNATIVE_DAPP_ID,
 }
 
 module.exports = configs
