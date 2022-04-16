@@ -80,18 +80,18 @@ const _buyToken = async (minAmountOutIn) => {
 	return tx
 }
 
-const _sellToken = async (amountOfTargetToken, minAmountOutIn) => {
-	const tx = await contractPancakeswapV2Router
+const _selltoken = async (amountoftargettoken, minamountoutin) => {
+	const tx = await contractpancakeswapv2router
 		.connect(wallet)
-		.swapExactTokensForTokens(
-			amountOfTargetToken,
-			minAmountOutIn,
-			[configs.targetTokenAddress, configs.WBNBContractAddress],
-			configs.userWalletAddress,
-			_getTimeDeadline(),
+		.swapexacttokensfortokens(
+			amountoftargettoken,
+			minamountoutin,
+			[configs.targettokenaddress, configs.wbnbcontractaddress],
+			configs.userwalletaddress,
+			_gettimedeadline(),
 			{
-				gasLimit: configs.sellTokenGasLimit,
-				gasPrice: configs.gasPrice,
+				gaslimit: configs.selltokengaslimit,
+				gasprice: configs.gasprice,
 				nonce: null,
 			}
 		)

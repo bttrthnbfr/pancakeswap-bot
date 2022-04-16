@@ -64,7 +64,7 @@ const BEP20 = [
 ]
 
 module.exports = {
-	pancakeswapv2router,
-	pancakeswapv2factory,
-	bep20,
+	pancakeswapV2Router,
+	pancakeswapV2Factory,
+	BEP20,
 }
